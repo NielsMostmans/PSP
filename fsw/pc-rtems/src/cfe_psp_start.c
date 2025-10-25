@@ -32,11 +32,9 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <rtems.h>
-#include <rtems/rtems_bsdnet.h>
-#include <rtems/rtems_dhcp_failsafe.h>
 #include <bsp.h>
-
-extern int rtems_fxp_attach(struct rtems_bsdnet_ifconfig *config, int attaching);
+#include <rtems/bsd/bsd.h>
+#include <machine/rtems-bsd-rc-conf.h>
 
 /*
 ** cFE includes
@@ -62,25 +60,6 @@ extern int rtems_fxp_attach(struct rtems_bsdnet_ifconfig *config, int attaching)
 */
 
 rtems_id RtemsTimerId;
-
-static unsigned char ethernet_address[6] = {0x00, 0x04, 0x9F, 0x00, 0x27, 0x61};
-static char          net_name_str[]      = "fxp1";
-static char          ip_addr_str[]       = "10.0.2.17";
-static char          ip_netmask_str[]    = "255.255.255.0";
-
-static struct rtems_bsdnet_ifconfig netdriver_config = {
-    .name             = net_name_str,
-    .attach           = rtems_fxp_attach,
-    .next             = NULL,
-    .ip_address       = ip_addr_str,
-    .ip_netmask       = ip_netmask_str,
-    .hardware_address = ethernet_address
-    /* more options can follow */
-};
-
-struct rtems_bsdnet_config rtems_bsdnet_config = {
-    .ifconfig = &netdriver_config, .bootp = rtems_bsdnet_do_dhcp_failsafe, /* fill if DHCP is used*/
-};
 
 /*
 ** 1 HZ Timer "ISR"
@@ -112,17 +91,25 @@ int timer_count = 0;
 */
 int CFE_PSP_Setup(void)
 {
-    rtems_status_code status;
-
     /*
      * Initialize the network.  This is also optional and only
      * works if an appropriate network device is present.
      */
-    status = rtems_bsdnet_initialize_network();
-    if (status != RTEMS_SUCCESSFUL)
-    {
-        printf("Network init not successful: %s / %s (continuing)\n", rtems_status_text(status), strerror(errno));
+
+    rtems_status_code sc = rtems_bsd_initialize();
+
+    if (sc != RTEMS_SUCCESSFUL) {
+        printf("Network init not successful: %s / %s (continuing)\n", rtems_status_text(sc), strerror(errno));
     }
+
+    const char *rcconf =
+      "hostname=\"cfs\"\n"
+      "ifconfig_eth0=\"inet 192.168.0.456 netmask 255.255.255.0\"\n"
+      "defaultroute=\"192.168.0.1\"\n";
+
+	const char *name = "default_bsd_conf";
+
+    rtems_bsd_run_rc_conf_script(name, rcconf, 10, true);
 
     return RTEMS_SUCCESSFUL;
 }
